@@ -4,14 +4,9 @@ If you are unfamiliar with ksonnet you may want to start by reading the [tutoria
 
 ## Requirements
 
-  * ksonnet version [0.8.0](https://github.com/ksonnet/ksonnet/releases) or later.
+  * ksonnet version [0.8.0](https://ksonnet.io/#get-started) or later.
+    * See [below](#why-kubeflow-uses-ksonnet) for an explanation of why we use ksonnet
   * Kubernetes >= 1.8 [see here](https://github.com/tensorflow/k8s#requirements)
-
-## Get ksonnet
-
-You need ksonnet version [0.8.0 release](https://github.com/ksonnet/ksonnet/releases) or later.
-
-As of this writing, Heptio hasn't released any newer prebuilt binaries so you will need to [build from source](https://ksonnet.io/docs/build-install).
 
 ## Deploy Kubeflow
 
@@ -37,11 +32,11 @@ Create the Kubeflow core component. The core component includes
 
 
 ```
+NAMESPACE=kubeflow
+kubectl create namespace ${NAMESPACE}
 ks generate core kubeflow-core --name=kubeflow-core --namespace=${NAMESPACE}
 ```
-  * namespace is optional
-  * TODO(jlewi): There's an open github [issue](https://github.com/ksonnet/ksonnet/issues/222) to allow components to pull
-    the namespace from the environment namespace parameter.
+  * Feel free to change the namespace to value that better suits your environment.
 
 
 Define an environment that doesn't use any Cloud features
@@ -61,7 +56,7 @@ If the user is running on a Cloud they could create an environment for this.
 
 ```
 ks env add cloud
-ks param set --cloud=gke
+ks param set kubeflow-core cloud gke --env=cloud
 ```
    * The cloud parameter triggers a set of curated cloud configs.
 
@@ -79,7 +74,7 @@ ks show cloud -c kubeflow-core
 
 ### Bringing up a Notebook
 
-Once you've deployed JupyterHub, a load balancer service is created. You can check its existence using the kubectl commandline.
+Once you've deployed JupyterHub, a load balancer service is created. You can check its existence using the kubectl command line.
 
 ```commandline
 kubectl get svc
@@ -126,10 +121,10 @@ Create a component for your model
 MODEL_COMPONENT=serveInception
 MODEL_NAME=inception
 MODEL_PATH=gs://cloud-ml-dev_jlewi/tmp/inception
-ks generate tf-serving ${MODEL_COMPONENT} --name=${MODEL_NAME} --namespace=default --model_path=${MODEL_PATH}
+ks generate tf-serving ${MODEL_COMPONENT} --name=${MODEL_NAME} --namespace=${NAMESPACE} --model_path=${MODEL_PATH}
 ```
 
-Deploy it in a particular environment. The deployment will pick up environment parmameters (e.g. cloud) and customize the deployment appropriately
+Deploy it in a particular environment. The deployment will pick up environment parameters (e.g. cloud) and customize the deployment appropriately
 
 ```
 ks apply cloud -c ${MODEL_COMPONENT}
@@ -142,7 +137,8 @@ We treat each TensorFlow job as a [component](https://ksonnet.io/docs/tutorial#2
 Create a component for your job.
 
 ```
-ks generate tf-job ${JOB_NAME} --name=${JOB_NAME}
+JOB_NAME=myjob
+ks generate tf-job ${JOB_NAME} --name=${JOB_NAME} --namespace=${NAMESPACE}
 ```
 
 To configure your job you need to set a bunch of parameters. To see a list of parameters run
@@ -154,6 +150,7 @@ ks prototype describe tf-job
 Parameters can be set using `ks param` e.g. to set the Docker image used
 
 ```
+IMAGE=gcr.io/tf-on-k8s-dogfood/tf_sample:d4ef871-dirty-991dde4
 ks param set ${JOB_NAME} image ${IMAGE}
 ```
 
@@ -165,6 +162,7 @@ to directly edit the `params.libsonnet` file directly.
 To run your job
 
 ```
+ENVIRONMENT=cloud
 ks apply ${ENVIRONMENT} -c ${JOB_NAME}
 ```
 
@@ -177,7 +175,8 @@ Kubeflow ships with a [ksonnet prototype](https://ksonnet.io/docs/concepts#proto
 Create the component
 
 ```
-ks generate tf-cnn ${CNN_JOB_NAME} --name=${CNN_JOB_NAME}
+CNN_JOB_NAME=mycnnjob
+ks generate tf-cnn ${CNN_JOB_NAME} --name=${CNN_JOB_NAME} --namespace=${NAMESPACE}
 ```
 
 Submit it
@@ -205,8 +204,7 @@ Set the disks parameter to a comma separated list of the Google persistent disks
   * These disks should be in the same zone as your cluster
   * These disks need to be created manually via gcloud or the Cloud console e.g.
   * These disks can't be attached to any existing VM or POD.
-  * TODO(jlewi): Can we rely on the default storage class to create the backing for store for NFS? Would that be portable across clouds
-    and avoid users having to create the disks manually?
+  
 Create the disks
 
 ```
@@ -250,3 +248,16 @@ shm                                                                65536       0
 tmpfs                                                           15444244       0   15444244   0% /sys/firmware
 ```
   * Here `jlewi-kubeflow-test1` and `jlewi-kubeflow-test2` are the names of the PDs.
+
+## Why Kubeflow Uses Ksonnet
+
+[Ksonnet](https://ksonnet.io/) is a command line tool that makes it easier to manage complex deployments consisting of multiple components. It is designed to
+work side by side with kubectl.
+
+Ksonnet allows us to generate Kubernetes manifests from parameterized templates. This makes it easy to customize Kubernetes manifests for your
+particular use case. In the examples above we used this functionality to generate manifests for TfServing with a user supplied URI for the model.
+
+One of the reasons we really like ksonnet is because it treats [environment](https://ksonnet.io/docs/concepts#environment) as in (dev, test, staging, prod) as a first class concept. For each environment we can easily deploy the same components but with slightly different parameters
+to customize it for a particular environments. We think this maps really well to common workflows. For example, this feature makes it really
+easy to run a job locally without GPUs for a small number of steps to make sure the code doesn't crash, and then easily move that to the
+Cloud to run at scale with GPUs.

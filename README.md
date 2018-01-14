@@ -1,5 +1,8 @@
 # Kubeflow
 
+[Prow test dashboard](https://k8s-testgrid.appspot.com/sig-big-data)
+[Prow jobs dashboard](https://prow.k8s.io/?repo=google%2Fkubeflow)
+
 The Kubeflow project is dedicated to making Machine Learning on Kubernetes easy, portable and scalable. Our goal is **not** to recreate other services, but to provide a straightforward way for spinning up best of breed OSS solutions. Contained in this repository are manifests for creating:
 
 * A JupyterHub to create & manage interactive Jupyter notebooks
@@ -19,31 +22,37 @@ Because ML practitioners use so many different types of tools, it is a key goal 
 
 Ultimately, we want to have a set of simple manifests that give you an easy to use ML stack _anywhere_ Kubernetes is already running and can self configure based on the cluster it deploys into.
 
+
+## Who should consider using Kubeflow?
+
+Based on the current functionality you should consider using Kubeflow if
+
+  * You want to train/serve TensorFlow models in different environments (e.g. local, on prem, and cloud)
+  * You want to use Jupyter notebooks to manage TensorFlow training jobs
+       * kubeflow is particularly helpful if you want to launch training jobs that use more resources (more nodes or more GPUs) than your notebook.
+  * You want to combine TensorFlow with other processes
+       * For example if you want to use [tensorflow/agents](https://github.com/tensorflow/agents) to run simulations to generate data for training
+         reinforcement learning models
+
+This list is based ONLY on current capabilities. We are investing significant resources to expand the
+functionality and actively soliciting help from companies and inviduals interested in contributing (see [below](README.md#who-should-consider-contributing-to-kubeflow))
+
 ## Setup
 
-This documentation assumes you have a Kubernetes cluster already available. For specific Kubernetes installations, additional configuration may be necessary.
+This documentation assumes you have a Kubernetes cluster already available. 
 
-### Minikube
+If you need help setting up a Kubernetes cluster please refer to [Kubernetes Setup](https://kubernetes.io/docs/setup/).
 
-[Minikube](https://github.com/kubernetes/minikube) is a tool that makes it easy to run Kubernetes locally. Minikube runs a
-single-node Kubernetes cluster inside a VM on your laptop for users looking to try out Kubernetes or develop with it day-to-day.
-The below steps apply to a minikube cluster - the latest version as of writing this documentation is 0.23.0. You must also have
-kubectl configured to access minikube.
+If you want to use GPUs be sure to follow the Kubernetes [instructions for enabling GPUs](https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/).
 
-### Google Kubernetes Engine
-
-[Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/) is a managed environment for deploying Kubernetes applications powered by Google Cloud.
-If you're using Google Kubernetes Engine, prior to creating the manifests, you must grant your own user the requisite RBAC role to create/edit other RBAC roles.
-
-```commandline
-kubectl create clusterrolebinding default-admin --clusterrole=cluster-admin --user=user@gmail.com
-```
 ## Quick Start
 
-Requirements
+### Requirements
 
-  * ksonnet version [0.8.0](https://github.com/ksonnet/ksonnet/releases) or later.
+  * ksonnet version [0.8.0](https://ksonnet.io/#get-started) or later.
   * Kubernetes >= 1.8 [see here](https://github.com/tensorflow/k8s#requirements)
+
+### Steps
 
 In order to quickly set up all components, execute the following commands,
 
@@ -61,7 +70,7 @@ ks pkg install kubeflow/tf-job
 
 # Deploy Kubeflow
 ks generate core kubeflow-core --name=kubeflow-core --namespace=${NAMESPACE}
-ks apply default kubeflow-core
+ks apply default -c kubeflow-core
 ```
 
 
@@ -71,6 +80,33 @@ Used together, these make it easy for a user go from training to serving using T
 effort in a portable fashion between different environments. 
 
 For more detailed instructions about how to use Kubeflow please refer to the [user guide](user_guide.md)
+
+## Troubleshooting
+
+### Minikube
+
+On [Minikube](https://github.com/kubernetes/minikube) the Virtualbox/VMware drivers for Minikube are recommended as there is a known
+issue between the KVM/KVM2 driver and TensorFlow Serving. The issue is tracked in [kubernetes/minikube#2377](https://github.com/kubernetes/minikube/issues/2377).
+
+### RBAC clusters
+
+If you are running on a K8s cluster with [RBAC enabled](https://kubernetes.io/docs/admin/authorization/rbac/#command-line-utilities), you may get an error like the following when deploying Kubeflow: 
+
+```
+ERROR Error updating roles kubeflow-test-infra.jupyter-role: roles.rbac.authorization.k8s.io "jupyter-role" is forbidden: attempt to grant extra privileges: [PolicyRule{Resources:["*"], APIGroups:["*"], Verbs:["*"]}] user=&{your-user@acme.com  [system:authenticated] map[]} ownerrules=[PolicyRule{Resources:["selfsubjectaccessreviews"], APIGroups:["authorization.k8s.io"], Verbs:["create"]} PolicyRule{NonResourceURLs:["/api" "/api/*" "/apis" "/apis/*" "/healthz" "/swagger-2.0.0.pb-v1" "/swagger.json" "/swaggerapi" "/swaggerapi/*" "/version"], Verbs:["get"]}] ruleResolutionErrors=[]
+```
+
+This error indicates you do not have sufficient permissions. In many cases you can resolve this just by creating an appropriate
+clusterrole binding like so and then redeploying kubeflow
+
+```commandline
+kubectl create clusterrolebinding default-admin --clusterrole=cluster-admin --user=your-user@acme.com
+```
+
+  * Replace `your-user@acme.com` with the user listed in the error message.
+
+If you're using, GKE you may want to refer to [GKE's RBAC docs](https://cloud.google.com/kubernetes-engine/docs/how-to/role-based-access-control) to understand
+how RBAC interacts with IAM on GCP.
 
 ## Resources
 
@@ -85,3 +121,12 @@ For more detailed instructions about how to use Kubeflow please refer to the [us
 * [Mailing List](https://groups.google.com/forum/#!forum/kubeflow-discuss)
 
 * Review and comment on the [proposal](https://docs.google.com/document/d/1dmErPUmqqKMOe4L0ZHQglSdgDguCM4SzlsEdYXRMIDA/edit#) to define the scope and future of Kubeflow
+
+
+### Who should consider contributing to Kubeflow?
+
+* Folks who want to add support for other ML frameworks (e.g. PyTorch, XGBoost, etc...)
+* Folks who want to bring more Kubernetes magic to ML (e.g. ISTIO integration for prediction)
+* Folks who want to make Kubeflow a richer ML platform (e.g. support for ML pipelines, hyperparameter tuning)
+* Folks who want to tune Kubeflow for their particular Kubernetes distribution or Cloud
+* Folks who want to write tutorials/blog posts showing how to use Kubeflow to solve ML problems
